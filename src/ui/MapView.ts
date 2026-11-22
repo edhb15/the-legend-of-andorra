@@ -191,23 +191,56 @@ export class MapView {
 
   attach(canvas: HTMLCanvasElement): void {
     this.canvas = canvas;
+    const zoomAt = (sx: number, sy: number, factor: number) => {
+      const before = this.screenToMap(sx, sy);
+      this.zoom = clamp(this.zoom * factor, 0.6, 8);
+      const after = this.screenToMap(sx, sy);
+      this.panX += after[0] - before[0];
+      this.panY += after[1] - before[1];
+    };
     canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
       const r = canvas.getBoundingClientRect();
-      const mx = e.clientX - r.left, my = e.clientY - r.top;
-      const before = this.screenToMap(mx, my);
-      this.zoom = clamp(this.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15), 0.6, 8);
-      const after = this.screenToMap(mx, my);
-      this.panX += (after[0] - before[0]);
-      this.panY += (after[1] - before[1]);
+      zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.15 : 1 / 1.15);
     }, { passive: false });
-    canvas.addEventListener("mousedown", (e) => {
-      this.dragging = true;
-      this.dragMoved = 0;
-      this.lastX = e.clientX;
-      this.lastY = e.clientY;
+    // Pointer events cover mouse, pen and fingers: drag to pan, pinch with two fingers to zoom,
+    // tap/click to place a marker (or to remove one you tapped).
+    const ptrs = new Map<number, { x: number; y: number }>();
+    let pinch = 0;
+    canvas.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (ptrs.size === 1) {
+        this.dragging = true;
+        this.dragMoved = 0;
+        this.lastX = e.clientX;
+        this.lastY = e.clientY;
+      } else {
+        const [a, b] = [...ptrs.values()];
+        pinch = Math.hypot(a.x - b.x, a.y - b.y);
+        this.dragMoved = 1e9; // a pinch is never a tap
+      }
     });
-    window.addEventListener("mousemove", (e) => {
+    canvas.addEventListener("pointermove", (e) => {
+      const p = ptrs.get(e.pointerId);
+      if (!p) return;
+      p.x = e.clientX;
+      p.y = e.clientY;
+      if (ptrs.size >= 2) {
+        const [a, b] = [...ptrs.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinch > 0 && d > 0) {
+          const r = canvas.getBoundingClientRect();
+          zoomAt((a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top, d / pinch);
+        }
+        pinch = d;
+        return;
+      }
       if (!this.dragging) return;
       const dx = e.clientX - this.lastX, dy = e.clientY - this.lastY;
       this.dragMoved += Math.abs(dx) + Math.abs(dy);
@@ -217,20 +250,33 @@ export class MapView {
       this.lastX = e.clientX;
       this.lastY = e.clientY;
     });
-    window.addEventListener("mouseup", (e) => {
-      if (!this.dragging) return;
-      this.dragging = false;
-      if (this.dragMoved < 5 && e.target === canvas) {
-        const r = canvas.getBoundingClientRect();
-        const [mx, my] = this.screenToMap(e.clientX - r.left, e.clientY - r.top);
-        const [wx, wz] = MapView.toWorld(mx, my);
-        if (e.button === 0) this.addMarker(wx, wz);
+    const end = (e: PointerEvent) => {
+      if (!ptrs.delete(e.pointerId)) return;
+      if (ptrs.size > 0) {
+        // lifting one finger of a pinch: carry on panning with the other
+        const [a] = [...ptrs.values()];
+        this.lastX = a.x;
+        this.lastY = a.y;
+        pinch = 0;
+        return;
       }
-    });
+      const wasDragging = this.dragging;
+      this.dragging = false;
+      const tap = e.type === "pointerup" && wasDragging && this.dragMoved < (e.pointerType === "mouse" ? 5 : 12) && e.button === 0;
+      if (!tap) return;
+      const r = canvas.getBoundingClientRect();
+      const sx = e.clientX - r.left, sy = e.clientY - r.top;
+      if (this.removeMarkerNear(sx, sy, e.pointerType === "mouse" ? 12 : 22)) return;
+      const [mx, my] = this.screenToMap(sx, sy);
+      const [wx, wz] = MapView.toWorld(mx, my);
+      this.addMarker(wx, wz);
+    };
+    canvas.addEventListener("pointerup", end);
+    canvas.addEventListener("pointercancel", end);
     canvas.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       const r = canvas.getBoundingClientRect();
-      this.removeMarkerNear(e.clientX - r.left, e.clientY - r.top);
+      this.removeMarkerNear(e.clientX - r.left, e.clientY - r.top, 18);
     });
   }
 
@@ -240,9 +286,10 @@ export class MapView {
     q.markers.push({ x, z, label: `Marker ${q.markers.length + 1}` });
     this.game.audio.sfx("uiClick");
   }
-  private removeMarkerNear(sx: number, sy: number): void {
+  /** Removes the player marker closest to a screen point; returns true if one was removed. */
+  private removeMarkerNear(sx: number, sy: number, radius: number): boolean {
     const q = this.game.quests;
-    let best = -1, bd = 18;
+    let best = -1, bd = radius;
     q.markers.forEach((m, i) => {
       const [px, py] = this.mapToScreen(...MapView.toMap(m.x, m.z));
       const d = Math.hypot(px - sx, py - sy);
@@ -251,7 +298,10 @@ export class MapView {
         best = i;
       }
     });
-    if (best >= 0) q.markers.splice(best, 1);
+    if (best < 0) return false;
+    q.markers.splice(best, 1);
+    this.game.audio.sfx("uiClick");
+    return true;
   }
 
   private scale(): number {

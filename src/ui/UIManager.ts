@@ -4,8 +4,12 @@ import type { Combatant } from "../systems/CombatSystem";
 import { ITEMS, ItemDef, RARITY_COLOR, SHARD_INFO, SHARD_ORDER, item } from "../data/items";
 import { QUESTS } from "../systems/QuestManager";
 import { MapView } from "./MapView";
+import { TouchControls } from "./TouchControls";
 import { formatTime, clamp01 } from "../core/MathUtil";
 import { DOOM_DAYS } from "../config";
+
+/** MapTiler's own logo, loaded from MapTiler (only shown while MapTiler terrain is in use). */
+const MAPTILER_LOGO = "https://api.maptiler.com/resources/logo.svg";
 
 type Panel = "none" | "pause" | "inventory" | "map" | "quests" | "shop" | "save" | "load" | "settings" | "controls" | "title" | "gameover";
 
@@ -28,6 +32,8 @@ interface Floater {
 export class UIManager {
   root: HTMLElement;
   map: MapView;
+  /** On-screen controls for phones and tablets (created in init()). */
+  touch: TouchControls | null = null;
   panel: Panel = "none";
   private els: Record<string, HTMLElement> = {};
   private floaters: Floater[] = [];
@@ -89,8 +95,21 @@ export class UIManager {
     this.miniCanvas = mm.querySelector("canvas")!;
     this.add("tracker", h("div", "tracker"), hud);
     this.add("weapon", h("div", "weapon-box"), hud);
-    this.add("abilities", h("div", "abilities hidden"), hud);
-    this.add("prompt", h("div", "prompt hidden"), hud);
+    const abilities = this.add("abilities", h("div", "abilities hidden"), hud);
+    abilities.addEventListener("pointerdown", (e) => {
+      if (!this.isTouch) return;
+      const a = (e.target as HTMLElement).closest(".ability");
+      if (!a) return;
+      e.preventDefault();
+      const i = [...abilities.children].indexOf(a);
+      this.tapKey(i === 5 ? "KeyR" : `Digit${i + 1}`);
+    });
+    const prompt = this.add("prompt", h("div", "prompt hidden"), hud);
+    prompt.addEventListener("pointerdown", (e) => {
+      if (!this.isTouch) return;
+      e.preventDefault();
+      this.tapKey("KeyE");
+    });
     this.add("boss", h("div", "boss-bar hidden", `<div class="bn"></div><div class="bt"></div><div class="bar"><div class="fill"></div></div><div class="phase"></div>`), hud);
     this.add("poisonWarn", h("div", "poison-warn hidden", "☠ POISON CLOUD ☠"), hud);
     this.add("crosshair", h("div", "crosshair hidden"), hud);
@@ -114,15 +133,80 @@ export class UIManager {
       this.advanceDialogue();
     });
     this.add("screen", h("div", "screen hidden"));
-    this.add("mapview", h("div", "mapview hidden", `<canvas></canvas><div class="map-title">Andorra</div><div class="map-legend"></div><div class="map-help">Drag to pan · Wheel to zoom · Click to place a marker · Right-click to remove · M / Esc to close</div>`));
+    this.add("mapview", h("div", "mapview hidden", `<canvas></canvas><div class="map-title">Andorra</div><div class="map-legend"></div><div class="map-help"></div><button class="btn small map-close">✕ Close</button>`));
     this.map.attach(this.els.mapview.querySelector("canvas")!);
+    this.els.mapview.querySelector(".map-close")!.addEventListener("click", () => this.closePanel());
     this.add("flash", h("div", "screen-flash"));
     this.add("fade", h("div", "fade"));
     this.add("title", h("div", "title-screen"));
+    // Required credit for MapTiler terrain: logo + "© MapTiler © OpenStreetMap contributors".
+    this.add(
+      "attribution",
+      h(
+        "div",
+        "attribution",
+        `<a class="mt-logo" href="https://www.maptiler.com/" target="_blank" rel="noopener"><img alt="MapTiler logo" height="18" referrerpolicy="no-referrer"></a>` +
+          `<span><a href="https://www.maptiler.com/copyright/" target="_blank" rel="noopener">© MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a></span>`,
+      ),
+    );
+    this.updateHints();
+  }
+
+  /** True while the on-screen touch controls are in use. */
+  get isTouch(): boolean {
+    return !!this.touch?.active;
+  }
+
+  /** Press and release a key in one go (used by tappable HUD elements). */
+  private tapKey(code: string): void {
+    this.game.input.simulateKey(code, true);
+    this.game.input.simulateKey(code, false);
+  }
+
+  /** Shows the MapTiler credit whenever the terrain on screen came from MapTiler. */
+  private updateAttribution(): void {
+    const on = this.game.terrainSource === "maptiler";
+    const el = this.els.attribution;
+    if (el.classList.contains("on") === on) return;
+    if (on) {
+      const img = el.querySelector("img")!;
+      if (!img.getAttribute("src")) img.setAttribute("src", MAPTILER_LOGO);
+    }
+    el.classList.toggle("on", on);
+    document.body.classList.toggle("mt-attrib", on);
+  }
+
+  /** Called when the player switches between touch and keyboard/mouse. */
+  onTouchModeChanged(): void {
+    this.updateHints();
+    this.els.prompt.innerHTML = "";
+    if (this.panel === "controls") this.renderControls();
+  }
+
+  private updateHints(): void {
+    const t = this.isTouch;
+    this.els.mapview.querySelector(".map-help")!.textContent = t
+      ? "Drag to pan · Pinch to zoom · Tap to place a marker · Tap a marker to remove it"
+      : "Drag to pan · Wheel to zoom · Click to place a marker · Click a marker or right-click to remove · M / Esc to close";
+    const foot = this.els.title.querySelector(".title-foot.hint");
+    if (foot) foot.textContent = this.titleHint();
+  }
+
+  private titleHint(): string {
+    return this.isTouch
+      ? "Left thumb: move · Right thumb: look around · Buttons: fight, jump and dodge"
+      : "WASD move · Mouse look · Click to attack · Click the screen to capture the mouse";
+  }
+
+  /** Short how-to line shown when an adventure starts or resumes. */
+  controlsHint(): string {
+    return this.isTouch ? "Left side of the screen: move · Right side: look around · ☰ for the menu" : "Click the screen to capture the mouse · Esc for menu";
   }
 
   init(): void {
     this.map.buildBase();
+    this.touch = new TouchControls(this.game, this.root);
+    this.onTouchModeChanged();
     document.addEventListener("pointerlockchange", () => {
       if (!document.pointerLockElement && this.game.state === "playing" && this.panel === "none" && !this.game.dialogue.active) {
         // ESC in pointer lock: open pause
@@ -132,7 +216,7 @@ export class UIManager {
       }
     });
     this.game.canvas.addEventListener("click", () => {
-      if (this.game.state === "playing" && this.panel === "none") this.game.input.requestPointerLock();
+      if (this.game.state === "playing" && this.panel === "none" && !this.isTouch) this.game.input.requestPointerLock();
     });
   }
 
@@ -168,7 +252,7 @@ export class UIManager {
         <button class="btn" data-a="controls">Controls</button>
         <div class="terrain-badge">Terrain: ${esc(src)}${g.terrainNote ? `<br><span class="note">${esc(g.terrainNote)}</span>` : ""}</div>
       </div>
-      <div class="title-foot">WASD move · Mouse look · Click to attack · Click the screen to capture the mouse</div>`;
+      <div class="title-foot hint">${esc(this.titleHint())}</div>`;
     return new Promise((res) => {
       this.titleResolve = res;
       t.querySelectorAll("button").forEach((b) =>
@@ -396,7 +480,7 @@ export class UIManager {
       return;
     }
     el.classList.remove("hidden");
-    const html = `<span class="key">E</span>${esc(label)}`;
+    const html = `<span class="key">${this.isTouch ? "👆" : "E"}</span>${esc(label)}`;
     if (el.innerHTML !== html) el.innerHTML = html;
   }
 
@@ -510,10 +594,12 @@ export class UIManager {
   }
 
   // ------------------------------------------------------------------ panels
-  private screen(html: string, cls = ""): HTMLElement {
+  private screen(html: string, cls = "", closable = true): HTMLElement {
     const s = this.els.screen;
     s.classList.remove("hidden");
-    s.innerHTML = `<div class="panel ${cls}">${html}</div>`;
+    // the corner ✕ stays reachable on small screens where the panel's own Close button is below the fold
+    s.innerHTML = `<div class="panel ${cls}">${closable ? `<button class="panel-x" aria-label="Close">✕</button>` : ""}${html}</div>`;
+    s.querySelector(".panel-x")?.addEventListener("click", () => this.closePanel());
     return s.firstChild as HTMLElement;
   }
 
@@ -669,7 +755,8 @@ export class UIManager {
       <div class="row"><label>Effects</label><input type="range" min="0" max="1" step="0.05" data-k="sfxVolume"></div>
       <div class="row"><label>Ambience</label><input type="range" min="0" max="1" step="0.05" data-k="ambientVolume"></div>
       <h3>Controls</h3>
-      <div class="row"><label>Mouse sensitivity</label><input type="range" min="0.2" max="3" step="0.1" data-k="mouseSensitivity"></div>
+      <div class="row"><label>Touch controls</label><select data-k="touchControls"><option value="auto">Auto (phones & tablets)</option><option value="on">Always on</option><option value="off">Off</option></select></div>
+      <div class="row"><label>Look sensitivity</label><input type="range" min="0.2" max="3" step="0.1" data-k="mouseSensitivity"></div>
       <div class="row"><label>Invert Y</label><input type="checkbox" data-k="invertY"></div>
       <h3>Adventure</h3>
       <div class="row"><label>Length of an in-game day (minutes)</label><input type="range" min="4" max="40" step="1" data-k="dayLengthMinutes"><span data-v="dayLengthMinutes"></span></div>
@@ -695,6 +782,7 @@ export class UIManager {
         else {
           g.audio.applyVolumes();
           import("../config").then((m) => m.saveSettings(s));
+          if (k === "touchControls") this.touch?.applySetting();
         }
       });
     });
@@ -702,6 +790,19 @@ export class UIManager {
   }
 
   private renderControls(): void {
+    if (this.isTouch) {
+      const rows: [string, string][] = [
+        ["Left side of the screen", "Move: put your thumb down and drag (a light push walks)"], ["Right side of the screen", "Look around: drag"],
+        ["⚔️ Attack", "Tap for combos · hold for a spin attack · tap in mid-air to plunge"], ["🛡️ Block", "Hold to block (time it to parry)"],
+        ["⬆️ Jump", "Jump"], ["💨 Dodge", "Dodge roll"], ["🏃 Sprint", "Switch running on or off"], ["🎯 Lock", "Lock onto an enemy"],
+        ["🧪 Heal", "Drink a health potion"], ["👆 Prompt", "Tap the prompt to talk, open or use"], ["Ability icons", "Tap to cast the Rainbow Sword's powers"],
+        ["🎒 🗺️ 📜 ☰", "Inventory · Map · Quest log · Menu"], ["Skip ▸▸", "Skip a cutscene"],
+      ];
+      const el = this.screen(`<h2>Controls</h2><div class="keys">${rows.map(([k, v]) => `<div class="k">${k}</div><div>${v}</div>`).join("")}</div><div class="note" style="margin-top:10px">A keyboard and mouse also work: click with a mouse and the touch buttons step aside.</div><button class="btn" data-a="back">Back</button>`, "menu");
+      (el as HTMLElement).style.width = "min(600px, 94vw)";
+      el.querySelector("button[data-a=back]")!.addEventListener("click", () => this.closePanel());
+      return;
+    }
     const keys: [string, string][] = [
       ["W A S D", "Move"], ["Mouse", "Look around (click to capture)"], ["Shift", "Sprint"], ["Space", "Jump"], ["Left click", "Attack (click repeatedly for combos)"],
       ["Hold left click", "Charged spin attack"], ["Left click in mid-air", "Plunging strike"], ["Right click", "Block (time it to parry)"], ["Q", "Dodge roll"],
@@ -871,11 +972,11 @@ export class UIManager {
       const roll = h("div", "roll", `<h1>The Legend of Andorra</h1>
         <p>A hero rose from the village of Ordino.<br>Five guardians fell. Five shards were united.<br>Zorg, Lord of the Dark Side, is no more.</p>
         <h4>YOUR JOURNEY</h4><p>Saved Andorra on Day ${g.time.day} at ${formatTime(g.time.minutes)}<br>Fell ${g.respawn.deaths} time${g.respawn.deaths === 1 ? "" : "s"} and rose again<br>Treasures found: ${g.treasure.opened.size}<br>Places discovered: ${g.discovered.size}</p>
-        <h4>THE WORLD</h4><p>Real terrain of the Principality of Andorra<br>MapTiler 3D terrain (quantized mesh) · offline elevation from open data</p>
+        <h4>THE WORLD</h4><p>Real terrain of the Principality of Andorra<br>${g.terrainSource === "maptiler" ? "3D terrain © MapTiler © OpenStreetMap contributors" : "Elevation from open data (Terrain Tiles: SRTM, EU-DEM © Copernicus)"}</p>
         <h4>BUILT WITH</h4><p>Babylon.js · TypeScript · Web Audio</p>
         <h4>THE GUARDIANS</h4><p>The Flame Beast · The Forest Guardian · The Frost Dragon<br>The Shadow Knight · The Thunder Titan</p>
         <h4>THE PEOPLE OF ANDORRA</h4><p>Elder Joan · Montse · Jaume · Carme · Núria · Pere<br>Captain Marc · Oriol · Roser · Laia · Pau<br>and Mestre Ferran, the Sword Maker</p>
-        <h4>&nbsp;</h4><p style="font-family:var(--title-font);font-size:30px;color:var(--gold)">Thank you for playing</p><p class="note">Press any key to continue exploring</p>`);
+        <h4>&nbsp;</h4><p style="font-family:var(--title-font);font-size:30px;color:var(--gold)">Thank you for playing</p><p class="note">${this.isTouch ? "Tap" : "Press any key"} to continue exploring</p>`);
       el.appendChild(roll);
       this.root.appendChild(el);
       let y = window.innerHeight;
@@ -905,7 +1006,7 @@ export class UIManager {
   showGameOver(): void {
     const g = this.game;
     const el = this.screen(`<div class="gameover"><h2>Andorra Has Fallen</h2><p class="note">The fourteenth day has ended. The cloud covers every valley.</p>
-      <button class="btn" data-a="load">Load a Save</button><button class="btn" data-a="new">Begin a New Adventure</button></div>`, "menu");
+      <button class="btn" data-a="load">Load a Save</button><button class="btn" data-a="new">Begin a New Adventure</button></div>`, "menu", false);
     this.panel = "gameover";
     g.input.exitPointerLock();
     el.querySelector("[data-a=load]")!.addEventListener("click", () => this.openSlots("load", "gameover" as Panel));
@@ -923,6 +1024,8 @@ export class UIManager {
   update(dt: number): void {
     const g = this.game;
     this.updateDialogue(dt);
+    this.touch?.update(dt);
+    this.updateAttribution();
     // floaters
     for (let i = this.floaters.length - 1; i >= 0; i--) {
       const f = this.floaters[i];
@@ -970,6 +1073,8 @@ export class UIManager {
   private updateHUD(dt: number): void {
     const g = this.game;
     const p = g.player;
+    // the interaction prompt belongs to free play only (it is tappable on touch screens)
+    if (g.state !== "playing" && !this.els.prompt.classList.contains("hidden")) this.els.prompt.classList.add("hidden");
     const hpF = p.hp / p.maxHp;
     this.hpGhost = Math.max(hpF, this.hpGhost - dt * 0.4);
     const hp = this.els.hp;

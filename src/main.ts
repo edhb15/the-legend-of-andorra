@@ -93,8 +93,8 @@ async function newGame(game: Game, intro: boolean): Promise<void> {
     game.state = "playing";
     game.ui.bigTitle("DAY 1", "14 days remain", "#e8c66a");
   }
-  game.ui.toast("Speak with Elder Joan by the waystone (press E near her)", "info");
-  game.ui.toast("Click the screen to capture the mouse · Esc for menu", "info");
+  game.ui.toast(`Speak with Elder Joan by the waystone (${game.ui.isTouch ? "tap the prompt" : "press E"} near her)`, "info");
+  game.ui.toast(game.ui.controlsHint(), "info");
   game.save.autosave("start");
 }
 
@@ -103,7 +103,7 @@ function startPlaying(game: Game): void {
   game.camera.snapBehindPlayer();
   game.state = "playing";
   game.evolution.refreshNow();
-  game.ui.toast("Adventure resumed. Click the screen to capture the mouse.", "info");
+  game.ui.toast(`Adventure resumed. ${game.ui.controlsHint()}`, "info");
 }
 
 boot();

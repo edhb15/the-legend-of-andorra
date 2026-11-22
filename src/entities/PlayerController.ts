@@ -345,11 +345,22 @@ export class PlayerController {
 
     // ---- input: movement direction
     let mx = 0, mz = 0;
+    let analog = 1;
     if (controllable && this.stunT <= 0) {
       if (inp.isDown("KeyW")) mz += 1;
       if (inp.isDown("KeyS")) mz -= 1;
       if (inp.isDown("KeyA")) mx -= 1;
       if (inp.isDown("KeyD")) mx += 1;
+      if (!mx && !mz) {
+        // touch joystick: any direction, and a light push walks slowly
+        const ax = inp.moveAxis();
+        const m = Math.hypot(ax.x, ax.y);
+        if (m > 0.02) {
+          mx = ax.x;
+          mz = ax.y;
+          analog = Math.min(1, 0.35 + m * 1.1);
+        }
+      }
     }
     const f = g.camera.forwardXZ();
     let dx = f.x * mz + f.z * mx;
@@ -413,6 +424,7 @@ export class PlayerController {
       if (this.swimming) target = this.sprinting ? 4.5 : 3.0;
       if (g.inventory.has("amulet_swiftness")) target *= 1.12;
       if (this.slowT > 0) target *= 0.5;
+      if (!this.sprinting) target *= analog;
     } else this.sprinting = false;
     if (this.charging && moving && this.rootT <= 0) target = 2.2;
     if (this.sprinting) {

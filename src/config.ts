@@ -1,3 +1,5 @@
+import { prefersTouch } from "./core/Device";
+
 /**
  * Global configuration for THE LEGEND OF ANDORRA.
  *
@@ -43,6 +45,8 @@ export interface Settings {
   ambientVolume: number;
   mouseSensitivity: number;
   invertY: boolean;
+  /** On-screen touch controls: "auto" shows them on phones and tablets. */
+  touchControls: "auto" | "on" | "off";
   quality: Quality;
   dayLengthMinutes: number;
   showFps: boolean;
@@ -76,7 +80,9 @@ export function defaultSettings(): Settings {
     ambientVolume: 0.7,
     mouseSensitivity: 1,
     invertY: false,
-    quality: "medium",
+    touchControls: "auto",
+    // phones and tablets start on low graphics; they can raise it in Settings
+    quality: prefersTouch() ? "low" : "medium",
     dayLengthMinutes: 16,
     showFps: false,
   };

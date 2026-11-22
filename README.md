@@ -29,6 +29,10 @@ The world is built from MapTiler's quantized‑mesh terrain
 2. **URL:** `http://localhost:5173/?maptilerKey=YOUR_KEY`
 3. **Build time:** copy `.env.example` to `.env.local` and set `VITE_MAPTILER_KEY=YOUR_KEY`.
 
+MapTiler keys are visible to anyone who plays a web game, so restrict yours to your site's address (for example `edhb15.github.io`) under *Allowed HTTP origins* in the MapTiler dashboard.
+
+While MapTiler terrain is in use, the game shows MapTiler's logo and "© MapTiler © OpenStreetMap contributors" (with links) at the bottom of the screen, as MapTiler requires. The logo is loaded from MapTiler. With the bundled elevation model the credit is hidden, because none of MapTiler's data is on screen then.
+
 The tiles are decoded in the browser (`src/world/terrain/QuantizedMesh.ts`) and rasterised into the game's heightfield. If no key is set, or MapTiler can't be reached, the game falls back to a bundled elevation model of Andorra (`public/data/andorra_dem.png`) so the real geography is always present. Force a source with `?terrain=offline` or `?terrain=maptiler`.
 
 ## Controls
@@ -36,7 +40,7 @@ The tiles are decoded in the browser (`src/world/terrain/QuantizedMesh.ts`) and 
 | Key | Action |
 | --- | --- |
 | WASD | Move |
-| Mouse | Camera (click the screen to capture the mouse; or drag with a button held) |
+| Mouse | Camera (click the screen to capture the mouse, or drag with a button held) |
 | Shift | Sprint |
 | Space | Jump |
 | Left click | Attack (combo); hold to charge a spin attack; click in mid‑air for a plunge |
@@ -48,6 +52,25 @@ The tiles are decoded in the browser (`src/world/terrain/QuantizedMesh.ts`) and 
 | 1–5 / R | Rainbow Sword abilities / Prismatic Nova ultimate |
 | I / M / J | Inventory / Map / Quest log |
 | Esc | Pause menu |
+
+### Phones and tablets
+
+Touch controls switch on by themselves on phones and tablets, and on a touchscreen laptop the moment you touch the screen. A mouse click switches back. You can also force them in Settings → *Touch controls* or with `?touch=1` / `?touch=0`.
+
+| Touch | Action |
+| --- | --- |
+| Left side of the screen | Move: put your thumb down anywhere and drag (a light push walks) |
+| Right side of the screen | Look around: drag |
+| ⚔️ Attack | Tap for combos, hold for the spin attack, tap in mid-air to plunge |
+| 🛡️ Block | Hold (time it to parry) |
+| ⬆️ Jump · 💨 Dodge · 🎯 Lock · 🧪 Heal | Jump, dodge roll, lock on, quick heal (the badge shows your potions) |
+| 🏃 Sprint | Switch running on; it switches off when you stop |
+| 👆 Prompt | Tap the prompt to talk, open or use |
+| Ability icons | Tap to cast the Rainbow Sword's powers |
+| 🎒 🗺️ 📜 ☰ ⛶ | Inventory, map, quest log, menu, full screen |
+| Map | Drag to pan, pinch to zoom, tap to place a marker, tap a marker to remove it |
+
+Phones and tablets start on *Low* graphics. Landscape works best; in portrait the game suggests turning the device.
 
 ## What's in the game
 
@@ -81,7 +104,7 @@ npm run typecheck # strict TypeScript
 
 ## Settings
 
-Quality (low/medium/high: shadows, post‑processing, vegetation distance, fog quality), volumes, mouse sensitivity, invert Y, and the **length of an in‑game day** (default 16 minutes, so 14 days ≈ 3.7 hours). URL helpers: `?quality=low|medium|high`, `?dayLength=8`, `?autostart&skipintro`, `?debug`.
+Quality (low/medium/high: shadows, post‑processing, vegetation distance, fog quality), volumes, touch controls (auto/on/off), look sensitivity, invert Y, and the **length of an in‑game day** (default 16 minutes, so 14 days ≈ 3.7 hours). URL helpers: `?quality=low|medium|high`, `?dayLength=8`, `?touch=1|0`, `?autostart&skipintro`, `?debug`.
 
 ## Code layout
 
@@ -100,7 +123,7 @@ src/
 
 ## Data sources and attribution
 
-- **Terrain (live):** © [MapTiler](https://www.maptiler.com/copyright/) © OpenStreetMap contributors. Requires your own API key.
+- **Terrain (live):** © [MapTiler](https://www.maptiler.com/copyright/) © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright). Requires your own API key; the credit and logo are shown in game while it is used.
 - **Terrain (offline fallback):** resampled from the open [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) dataset (Mapzen/Tilezen: SRTM, EU‑DEM © Copernicus and others).
 - **Border of Andorra:** [Natural Earth](https://www.naturalearthdata.com/) 1:10m Admin‑0 (public domain).
 - **Fonts:** Cinzel, Cinzel Decorative and EB Garamond (SIL Open Font License) via Fontsource.

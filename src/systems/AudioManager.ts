@@ -81,6 +81,9 @@ export class AudioManager {
     };
     window.addEventListener("pointerdown", resume);
     window.addEventListener("keydown", resume);
+    // phones only allow sound to start from a finished tap
+    window.addEventListener("touchend", resume);
+    window.addEventListener("click", resume);
   }
 
   private ensure(): void {

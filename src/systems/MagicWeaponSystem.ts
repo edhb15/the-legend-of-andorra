@@ -378,8 +378,10 @@ export class MagicWeaponSystem {
     await g.dialogue.run(async () => {
       await g.dialogue.say("Mestre Ferran", [
         "It is done. The Rainbow Sword lives again.",
-        "Its five colours answer your will: [1] Flame Wave, [2] Nature's Grace, [3] Frost Nova, [4] Light Beam, [5] Chain Lightning.",
-        "Strike your foes to charge its prismatic energy, then press [R] to unleash the Prismatic Nova.",
+        this.game.ui.isTouch
+          ? "Its five colours answer your will: Flame Wave, Nature's Grace, Frost Nova, Light Beam and Chain Lightning. Tap their icons to call on them."
+          : "Its five colours answer your will: [1] Flame Wave, [2] Nature's Grace, [3] Frost Nova, [4] Light Beam, [5] Chain Lightning.",
+        `Strike your foes to charge its prismatic energy, then ${this.game.ui.isTouch ? "tap the rainbow icon" : "press [R]"} to unleash the Prismatic Nova.`,
         "Its light softens the poison cloud's bite. Now go — Comapedrosa. Only this blade can end Zorg forever.",
       ]);
     });
