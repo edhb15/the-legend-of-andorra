@@ -4,6 +4,7 @@ import { WORLD } from "../config";
 import { clamp01, smoothstep, lerp, distToSegment } from "../core/MathUtil";
 import { GLSL_NOISE } from "../world/ShaderLib";
 import { WorldShaderGlobals } from "../world/MaterialPlugins";
+import { coverageFraction } from "./DoomSchedule";
 
 Effect.ShadersStore["loaPoisonFogFragmentShader"] = /* glsl */ `
 precision highp float;
@@ -20,6 +21,7 @@ uniform vec4 safeZones[8];
 uniform vec4 fogLight;
 uniform vec4 extra;
 ${GLSL_NOISE}
+float loa_fbm3_2(vec3 p){ return loa_vnoise3(p) * 0.62 + loa_vnoise3(p * 2.07 + vec3(3.1, 1.7, 5.3)) * 0.38; }
 float coverFrom(float r, vec2 xz, vec2 uv){
   float bd = (uv.x < 0. || uv.y < 0. || uv.x > 1. || uv.y > 1.) ? -600.0 : r * 2600.0 - 600.0;
   float wob = (loa_vnoise(xz * 0.012 + vec2(poisonParams.y * 0.03, 0.)) - 0.5) * 70.0;
@@ -43,7 +45,9 @@ void main(void){
   float dist = vz <= 0.01 ? 4200.0 : vz / max(dot(dir, camFwd), 0.05);
   float maxD = min(dist, 4200.0);
   int steps = int(extra.x);
-  float jitter = loa_hash12(gl_FragCoord.xy + fract(poisonParams.y) * 37.0);
+  // interleaved gradient noise: a smoother dither than white noise
+  vec2 fc = gl_FragCoord.xy + vec2(mod(floor(poisonParams.y * 30.0), 8.0) * 5.588238);
+  float jitter = fract(52.9829189 * fract(0.06711056 * fc.x + 0.00583715 * fc.y));
   float T = 1.0;
   vec3 acc = vec3(0.0);
   float prevT = 0.0;
@@ -65,7 +69,7 @@ void main(void){
     float hd = exp(-hk * 2.2) * (1.0 - smoothstep(0.75, 1.0, hk)) * smoothstep(-8.0, 1.0, hAbove);
     if (hd <= 0.001) continue;
     vec3 q = p * 0.012 + vec3(poisonParams.y * 0.04, -poisonParams.y * 0.015, poisonParams.y * 0.03);
-    float nn = loa_fbm3(q);
+    float nn = loa_fbm3_2(q);
     float billow = smoothstep(0.25, 0.75, nn + (1.0 - hk) * 0.25);
     float dens = c * hd * (0.15 + billow * 1.7) * 0.0055 * extra.y;
     float a = 1.0 - exp(-dens * dt);
@@ -119,16 +123,7 @@ export class PoisonCloudSystem {
 
   /** Fraction of Andorra's area covered after `days` days (0..14). */
   static coverageFraction(days: number): number {
-    const pts: [number, number][] = [[0, 0], [1, 0.03], [4, 0.2], [7, 0.45], [10, 0.7], [13, 0.93], [14, 1.0]];
-    if (days <= 0) return 0;
-    if (days >= 14) return 1;
-    for (let i = 1; i < pts.length; i++) {
-      if (days <= pts[i][0]) {
-        const [d0, f0] = pts[i - 1], [d1, f1] = pts[i];
-        return f0 + ((f1 - f0) * (days - d0)) / (d1 - d0);
-      }
-    }
-    return 1;
+    return coverageFraction(days);
   }
 
   init(): void {

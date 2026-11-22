@@ -83,13 +83,28 @@ export async function loadMapTilerElevation(key: string, progress: Progress, zoo
   if (!/[?&]key=/.test(template)) template += (template.includes("?") ? "&" : "?") + "key=" + encodeURIComponent(key);
   const scheme = (tj.scheme ?? "tms").toLowerCase();
   const z = Math.max(tj.minzoom ?? 0, Math.min(tj.maxzoom ?? 12, zoomPref));
-  // Geographic (EPSG:4326) tiling: 2^(z+1) x 2^z tiles, each 180/2^z degrees.
-  const size = 180 / Math.pow(2, z);
-  const numY = Math.pow(2, z);
-  const x0 = Math.floor((WORLD.lon0 + 180) / size);
-  const x1 = Math.floor((WORLD.lon1 + 180) / size);
-  const y0 = Math.floor((WORLD.lat0 + 90) / size);
-  const y1 = Math.floor((WORLD.lat1 + 90) / size);
+  // Quantized-mesh normally uses the geographic (EPSG:4326) grid: 2^(z+1) x 2^z tiles of 180/2^z degrees.
+  // Some providers publish a Web-Mercator (EPSG:3857) pyramid instead; support both.
+  const proj = String((tj as any).projection ?? (tj as any).crs ?? "EPSG:4326");
+  const mercator = proj.includes("3857") || proj.includes("900913");
+  const n = Math.pow(2, z);
+  const size = 180 / n;
+  const numY = mercator ? n : n;
+  const mercY = (lat: number) => {
+    const r = (lat * Math.PI) / 180;
+    return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n; // xyz row (from top)
+  };
+  const x0 = mercator ? Math.floor(((WORLD.lon0 + 180) / 360) * n) : Math.floor((WORLD.lon0 + 180) / size);
+  const x1 = mercator ? Math.floor(((WORLD.lon1 + 180) / 360) * n) : Math.floor((WORLD.lon1 + 180) / size);
+  // y in TMS convention (row 0 = south)
+  const y0 = mercator ? n - 1 - Math.floor(mercY(WORLD.lat0)) : Math.floor((WORLD.lat0 + 90) / size);
+  const y1 = mercator ? n - 1 - Math.floor(mercY(WORLD.lat1)) : Math.floor((WORLD.lat1 + 90) / size);
+  const tileBounds = (tx: number, ty: number) => {
+    if (!mercator) return { west: -180 + tx * size, east: -180 + (tx + 1) * size, south: -90 + ty * size, north: -90 + (ty + 1) * size };
+    const row = n - 1 - ty; // xyz row
+    const lat = (yy: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * yy) / n))) * 180) / Math.PI;
+    return { west: (tx / n) * 360 - 180, east: ((tx + 1) / n) * 360 - 180, north: lat(row), south: lat(row + 1) };
+  };
 
   const elev = new Float32Array(NX * NZ);
   const coverage = new Uint8Array(NX * NZ);
@@ -100,17 +115,19 @@ export async function loadMapTilerElevation(key: string, progress: Progress, zoo
 
   const rasterise = (tx: number, ty: number, buf: ArrayBuffer) => {
     const t = decodeQuantizedMesh(buf);
-    const west = -180 + tx * size;
-    const south = -90 + ty * size;
-    const n = t.vertexCount;
+    const b = tileBounds(tx, ty);
+    const vc = t.vertexCount;
     // vertex positions in grid index space
-    const gi = new Float32Array(n);
-    const gj = new Float32Array(n);
-    const hv = new Float32Array(n);
+    const gi = new Float32Array(vc);
+    const gj = new Float32Array(vc);
+    const hv = new Float32Array(vc);
     const hr = t.maxHeight - t.minHeight;
-    for (let k = 0; k < n; k++) {
-      const lon = west + (t.u[k] / 32767) * size;
-      const lat = south + (t.v[k] / 32767) * size;
+    const mS = mercator ? Math.log(Math.tan(Math.PI / 4 + (b.south * Math.PI) / 360)) : 0;
+    const mN = mercator ? Math.log(Math.tan(Math.PI / 4 + (b.north * Math.PI) / 360)) : 0;
+    for (let k = 0; k < vc; k++) {
+      const lon = b.west + (t.u[k] / 32767) * (b.east - b.west);
+      const fv = t.v[k] / 32767;
+      const lat = mercator ? (Math.atan(Math.sinh(mS + fv * (mN - mS))) * 180) / Math.PI : b.south + fv * (b.north - b.south);
       gi[k] = ((lon - WORLD.lon0) / (WORLD.lon1 - WORLD.lon0)) * (NX - 1);
       gj[k] = ((lat - WORLD.lat0) / (WORLD.lat1 - WORLD.lat0)) * (NZ - 1);
       hv[k] = t.minHeight + (t.h[k] / 32767) * hr;

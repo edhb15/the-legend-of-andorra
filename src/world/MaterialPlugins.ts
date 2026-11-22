@@ -91,7 +91,7 @@ float loa_vein = 0.0;
   float h = P.y + (n1 - 0.5) * 40.0;
   vec3 grassLush = vec3(0.27, 0.44, 0.14);
   vec3 grassDry  = vec3(0.50, 0.52, 0.23);
-  vec3 alpine    = vec3(0.52, 0.52, 0.30);
+  vec3 alpine    = vec3(0.44, 0.46, 0.30);
   vec3 forest    = vec3(0.16, 0.19, 0.08);
   vec3 rock      = mix(vec3(0.36, 0.34, 0.33), vec3(0.52, 0.50, 0.47), n3);
   vec3 scree     = vec3(0.55, 0.52, 0.48);
@@ -104,7 +104,7 @@ float loa_vein = 0.0;
   // wet river banks
   col = mix(col, col * vec3(0.7, 0.85, 0.7), splat.g);
   float rockAmt = smoothstep(0.30, 0.46, slope + (n2 - 0.5) * 0.14);
-  rockAmt = max(rockAmt, smoothstep(500.0, 560.0, h) * smoothstep(0.08, 0.25, slope + n2 * 0.1));
+  rockAmt = max(rockAmt, smoothstep(450.0, 540.0, h) * smoothstep(0.02, 0.2, slope + n2 * 0.12));
   vec3 rockCol = mix(rock, scree, smoothstep(0.55, 0.8, n2) * (1.0 - smoothstep(0.45, 0.6, slope)));
   // rock strata
   rockCol *= 0.85 + 0.25 * loa_vnoise(vec2(P.y * 0.45, P.x * 0.02 + P.z * 0.02));

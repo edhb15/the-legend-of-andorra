@@ -80,6 +80,22 @@ export class WorldEvolutionSystem {
   refreshNow(): void {
     this.villageT = 0;
     this.update(0);
+    // after a time skip (sleep, fast travel, loading) villagers of lost villages are already at the refuge
+    const g = this.game;
+    const home = g.world.homeVillage();
+    const rng = new RNG(Math.floor(g.time.minutes));
+    for (const n of g.npcs.npcs) {
+      if (n.fixed || n.evacuated || n.rig) continue;
+      const st = n.current.state;
+      if ((st === "abandoned" || st === "evacuating") && n.current.id !== HOME_VILLAGE) {
+        n.evacuated = true;
+        n.current = home;
+        const a = rng.next() * Math.PI * 2, d = rng.range(12, 22);
+        n.position.set(home.x + Math.sin(a) * d, 0, home.z + Math.cos(a) * d);
+        n.position.y = g.terrain.getHeight(n.position.x, n.position.z);
+        n.thinkT = 0;
+      }
+    }
   }
 
   private applyState(v: Village, s: VillageState): void {

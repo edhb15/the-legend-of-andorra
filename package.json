@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/"
+    "test": "node --experimental-strip-types --no-warnings --test tests/core.test.ts"
   },
   "dependencies": {
     "@babylonjs/core": "9.37.1",
