@@ -371,7 +371,8 @@ export class TerrainManager {
       }
       if (lod === c.active) continue;
       if (!c.lods[lod]) {
-        if (built >= budget && c.active >= 0) continue;
+        // full detail around the camera is never deferred: a coarse surface could sit above the camera
+        if (built >= budget && c.active >= 0 && lod !== 0) continue;
         c.lods[lod] = this.buildChunkMesh(c, lod);
         built++;
       }

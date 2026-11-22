@@ -72,6 +72,13 @@ The tiles are decoded in the browser (`src/world/terrain/QuantizedMesh.ts`) and 
 - **Audio.** Procedural, generative music (village, exploration, night, cave, battle, boss, final boss phases, forge, death, ending) that darkens as the cloud spreads, plus ambience (wind by altitude, rivers, birds, crickets, cave drips) and synthesized sound effects.
 - **Save / load.** Autosave plus three manual slots (save at waystones or from the pause menu). Waystones also offer fast travel, which costs in‑game time.
 
+## Tests
+
+```bash
+npm test          # unit tests: quantized-mesh decoder round-trip, 14-day cloud timetable
+npm run typecheck # strict TypeScript
+```
+
 ## Settings
 
 Quality (low/medium/high: shadows, post‑processing, vegetation distance, fog quality), volumes, mouse sensitivity, invert Y, and the **length of an in‑game day** (default 16 minutes, so 14 days ≈ 3.7 hours). URL helpers: `?quality=low|medium|high`, `?dayLength=8`, `?autostart&skipintro`, `?debug`.
